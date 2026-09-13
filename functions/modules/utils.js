@@ -13,7 +13,7 @@ export function calculateDataHash(data) {
     let hash = 0;
     for (let i = 0; i < jsonString.length; i++) {
         const char = jsonString.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
+        hash = (hash << 5) - hash + char;
         hash = hash & hash; // 转换为32位整数
     }
     return hash.toString();
@@ -32,6 +32,69 @@ export function hasDataChanged(oldData, newData) {
 }
 
 /**
+ * 获取 KV namespace。
+ * 仅从 Cloudflare Pages 的 env 绑定读取。
+ * @param {Object} env
+ * @returns {Object|null}
+ */
+function getKV(env) {
+    return env?.MISUB_KV || null;
+}
+
+/**
+ * 读取运行时环境变量。
+ * @param {Object} env
+ * @param {string} key
+ * @returns {string|undefined}
+ */
+function getRuntimeEnvValue(env, key) {
+    const envValue = env?.[key];
+    if (envValue !== undefined && envValue !== null && String(envValue).trim() !== '') {
+        return String(envValue);
+    }
+
+    return undefined;
+}
+
+function isStorageUnavailableError(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return (
+        message.includes('kv storage is paused') ||
+        message.includes('storage is paused') ||
+        message.includes('namespace is paused') ||
+        message.includes('kv put() limit exceeded') ||
+        message.includes('put() limit exceeded for the day')
+    );
+}
+
+async function safeKvGet(kv, key) {
+    if (!kv) return null;
+    try {
+        return await kv.get(key);
+    } catch (error) {
+        if (isStorageUnavailableError(error)) {
+            console.warn(`[Auth Storage] KV get skipped for ${key}: ${error.message}`);
+            return null;
+        }
+        throw error;
+    }
+}
+
+async function safeKvPut(kv, key, value) {
+    if (!kv) return false;
+    try {
+        await kv.put(key, value);
+        return true;
+    } catch (error) {
+        if (isStorageUnavailableError(error)) {
+            console.warn(`[Auth Storage] KV put skipped for ${key}: ${error.message}`);
+            return false;
+        }
+        throw error;
+    }
+}
+
+/**
  * 条件性写入KV存储，只在数据真正变更时写入
  * @param {Object} env - Cloudflare环境对象
  * @param {string} key - KV键名
@@ -40,24 +103,152 @@ export function hasDataChanged(oldData, newData) {
  * @returns {Promise<boolean>} - 是否执行了写入操作
  */
 export async function conditionalKVPut(env, key, newData, oldData = null) {
+    const kv = getKV(env);
     // 如果没有提供旧数据，先从KV读取
     if (oldData === null) {
         try {
-            oldData = await env.MISUB_KV.get(key, 'json');
+            oldData = await kv.get(key).then((r) => (r ? JSON.parse(r) : null));
         } catch (error) {
             // 读取失败时，为安全起见执行写入
-            await env.MISUB_KV.put(key, JSON.stringify(newData));
+            await kv.put(key, JSON.stringify(newData));
             return true;
         }
     }
 
     // 检测数据是否变更
     if (hasDataChanged(oldData, newData)) {
-        await env.MISUB_KV.put(key, JSON.stringify(newData));
+        await kv.put(key, JSON.stringify(newData));
         return true;
     } else {
         return false;
     }
+}
+
+/**
+ * 获取或生成 Cookie 加密密钥
+ * 优先顺序：KV → 环境变量 COOKIE_SECRET → 随机生成（无 KV 时仅内存有效）
+ * @param {Object} env - 运行时环境对象
+ * @returns {Promise<string>} 密钥
+ */
+export async function getCookieSecret(env) {
+    const kv = getKV(env);
+    const runtimeCookieSecret = getRuntimeEnvValue(env, 'COOKIE_SECRET');
+
+    if (kv) {
+        // 1. 尝试从 KV 读取
+        const kvSecret = await safeKvGet(kv, 'SYSTEM_COOKIE_SECRET');
+        if (kvSecret) return kvSecret;
+
+        // 2. 有环境变量则优先回退到环境变量，并尽力写回 KV
+        if (runtimeCookieSecret) {
+            await safeKvPut(kv, 'SYSTEM_COOKIE_SECRET', runtimeCookieSecret);
+            return runtimeCookieSecret;
+        }
+
+        // 3. 生成新密钥并尽力持久化到 KV；若 KV 暂不可用则退化为本次运行临时密钥
+        const newSecret = crypto.randomUUID();
+        await safeKvPut(kv, 'SYSTEM_COOKIE_SECRET', newSecret);
+        return newSecret;
+    }
+
+    // 无 KV：直接使用环境变量，无则生成临时密钥（重启后失效）
+    if (runtimeCookieSecret) return runtimeCookieSecret;
+    return crypto.randomUUID();
+}
+
+/**
+ * 获取管理员密码
+ * 优先顺序：环境变量 ADMIN_PASSWORD → KV → 默认值 'admin'
+ * @param {Object} env - 运行时环境对象
+ * @returns {Promise<string>} 密码
+ */
+export async function getAdminPassword(env) {
+    const runtimeAdminPassword = getRuntimeEnvValue(env, 'ADMIN_PASSWORD');
+    if (runtimeAdminPassword) {
+        return runtimeAdminPassword.trim();
+    }
+
+    const kv = getKV(env);
+    if (kv) {
+        const kvPassword = await safeKvGet(kv, 'SYSTEM_ADMIN_PASSWORD');
+        if (kvPassword) return String(kvPassword).trim();
+    }
+
+    return 'admin';
+}
+
+/**
+ * 获取认证相关调试信息（不返回任何敏感值）
+ * @param {Object} env
+ * @returns {Promise<Object>}
+ */
+export async function getAuthDebugInfo(env) {
+    const runtimeAdminPassword = getRuntimeEnvValue(env, 'ADMIN_PASSWORD');
+    const runtimeCookieSecret = getRuntimeEnvValue(env, 'COOKIE_SECRET');
+    const kv = getKV(env);
+
+    let hasKvAdminPassword = false;
+    let hasKvCookieSecret = false;
+
+    if (kv) {
+        hasKvAdminPassword = !!(await safeKvGet(kv, 'SYSTEM_ADMIN_PASSWORD'));
+        hasKvCookieSecret = !!(await safeKvGet(kv, 'SYSTEM_COOKIE_SECRET'));
+    }
+
+    let adminPasswordSource = 'default';
+    if (runtimeAdminPassword) {
+        adminPasswordSource = 'env';
+    } else if (hasKvAdminPassword) {
+        adminPasswordSource = 'kv';
+    }
+
+    let cookieSecretSource = 'generated';
+    if (runtimeCookieSecret) {
+        cookieSecretSource = 'env';
+    } else if (hasKvCookieSecret) {
+        cookieSecretSource = 'kv';
+    }
+
+    return {
+        hasKv: !!kv,
+        hasD1: !!env?.MISUB_DB,
+        adminPassword: {
+            source: adminPasswordSource,
+            hasRuntime: !!runtimeAdminPassword,
+            hasKvValue: hasKvAdminPassword,
+            isDefaultFallback: adminPasswordSource === 'default',
+        },
+        cookieSecret: {
+            source: cookieSecretSource,
+            hasRuntime: !!runtimeCookieSecret,
+            hasKvValue: hasKvCookieSecret,
+            mayRegenerateWithoutKv: !kv && !runtimeCookieSecret,
+        },
+    };
+}
+
+/**
+ * 检查是否正在使用默认密码
+ * @param {Object} env
+ * @returns {Promise<boolean>}
+ */
+export async function isUsingDefaultPassword(env) {
+    const current = await getAdminPassword(env);
+    return current === 'admin';
+}
+
+/**
+ * 设置管理员密码
+ * 有 KV 时持久化到 KV；无 KV 时抛出提示
+ * @param {Object} env - 运行时环境对象
+ * @param {string} newPassword - 新密码
+ */
+export async function setAdminPassword(env, newPassword) {
+    const kv = getKV(env);
+    if (!kv) {
+        throw new Error('当前部署未绑定 KV，请在平台控制台通过环境变量 ADMIN_PASSWORD 修改密码');
+    }
+    await kv.put('SYSTEM_ADMIN_PASSWORD', newPassword);
 }
 
 export { formatBytes } from '../../src/shared/utils.js';
@@ -95,7 +286,7 @@ export function clashFix(content) {
             lines = content.split('\n');
         }
 
-        let result = "";
+        let result = '';
         for (let line of lines) {
             if (line.includes('type: wireguard')) {
                 const 备改内容 = `, mtu: 1280, udp: true`;
@@ -120,11 +311,24 @@ import { SYSTEM_CONSTANTS } from './config.js';
 export function getProcessedUserAgent(originalUserAgent, url = '') {
     if (!originalUserAgent) return originalUserAgent;
 
-    // CF-Workers-SUB的精华策略：
-    // 统一使用v2rayN UA获取订阅，绕过机场过滤同时保证获取完整节点
-    return SYSTEM_CONSTANTS.FETCHER_USER_AGENT;
-}
+    const rawUrl = typeof url === 'string' ? url : '';
+    try {
+        const parsedUrl = new URL(rawUrl);
+        const params = parsedUrl.searchParams;
+        if (params.has('clash') || params.get('target')?.toLowerCase() === 'clash') {
+            return 'clash-verge/v2.4.3';
+        }
+    } catch {
+        if (/[?&](?:clash(?:=|&|$)|target=clash(?:&|$))/i.test(rawUrl)) {
+            return 'clash-verge/v2.4.3';
+        }
+    }
 
+    // CF-Workers-SUB的精华策略：
+    // 默认使用 v2rayN UA 获取订阅，绕过多数机场过滤同时保证获取完整节点。
+    // 个别 Clash 专用链接（如 ?clash=2）会严格校验 UA，需要保留 Clash UA。
+    return 'v2rayN/7.23';
+}
 /**
  * 名称前缀辅助函数
  * @param {string} link - 节点链接
@@ -135,7 +339,8 @@ export function prependNodeName(link, prefix) {
     if (!prefix) return link;
     const appendToFragment = (baseLink, namePrefix) => {
         const hashIndex = baseLink.lastIndexOf('#');
-        const originalName = hashIndex !== -1 ? decodeURIComponent(baseLink.substring(hashIndex + 1)) : '';
+        const originalName =
+            hashIndex !== -1 ? decodeURIComponent(baseLink.substring(hashIndex + 1)) : '';
         const base = hashIndex !== -1 ? baseLink.substring(0, hashIndex) : baseLink;
         if (originalName.startsWith(namePrefix)) {
             return baseLink;
@@ -161,7 +366,7 @@ export function prependNodeName(link, prefix) {
             const newBase64Part = btoa(unescape(encodeURIComponent(newJsonString)));
             return 'vmess://' + newBase64Part;
         } catch (e) {
-            console.error("为 vmess 节点添加名称前缀失败，将回退到通用方法。", e);
+            console.error('为 vmess 节点添加名称前缀失败，将回退到通用方法。', e);
             return appendToFragment(link, prefix);
         }
     }
@@ -179,10 +384,15 @@ export function createTimeoutFetch(input, init = {}, timeout = 10000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const fetchPromise = fetch(new Request(input, {
-        ...init,
-        signal: controller.signal
-    }));
+    // 分离 cf 选项：cf 是 Cloudflare Workers fetch 特有的选项，
+    // 不属于标准 RequestInit，不应传入 Request 构造器。
+    // 将其直接传给 fetch() 的第二参数，Cloudflare 环境正常生效，Node.js 环境安全忽略。
+    const { cf, ...requestInit } = init;
+    const request = new Request(input, {
+        ...requestInit,
+        signal: controller.signal,
+    });
+    const fetchPromise = cf ? fetch(request, { cf }) : fetch(request);
 
     return fetchPromise.finally(() => {
         clearTimeout(timeoutId);
@@ -200,11 +410,7 @@ export function createTimeoutFetch(input, init = {}, timeout = 10000) {
  * @returns {Promise<Response>} 响应
  */
 export async function retryFetch(input, init = {}, options = {}) {
-    const {
-        maxRetries = 3,
-        timeout = 10000,
-        baseDelay = 1000
-    } = options;
+    const { maxRetries = 3, timeout = 10000, baseDelay = 1000 } = options;
 
     let lastError;
 
@@ -221,17 +427,18 @@ export async function retryFetch(input, init = {}, options = {}) {
 
             // 计算延迟时间（指数退避）
             const delay = baseDelay * Math.pow(2, attempt);
-            console.warn(`[Retry] Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms:`, error.message);
+            console.warn(
+                `[Retry] Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms:`,
+                error.message
+            );
 
             // 等待延迟
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve) => setTimeout(resolve, delay));
         }
     }
 
     throw lastError;
 }
-
-
 
 /**
  * 安全的存储操作包装器
@@ -261,7 +468,7 @@ export function log(level, message, data = null) {
         timestamp,
         level,
         message,
-        data
+        data,
     };
 
     switch (level) {
@@ -290,9 +497,22 @@ export async function getCallbackToken(env) {
     const secret = env.COOKIE_SECRET || 'default-callback-secret';
     const encoder = new TextEncoder();
     const keyData = encoder.encode(secret);
-    const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode('callback-static-data'));
-    return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+    const signature = await crypto.subtle.sign(
+        'HMAC',
+        cryptoKey,
+        encoder.encode('callback-static-data')
+    );
+    return Array.from(new Uint8Array(signature))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+        .slice(0, 16);
 }
 
 /**
@@ -317,10 +537,34 @@ export function migrateConfigSettings(config) {
     if (migratedConfig.hasOwnProperty('enableTrafficNode')) {
         migratedConfig.enableTrafficNode = toBoolean(migratedConfig.enableTrafficNode);
     }
+    // [Migration] 映射旧名到新名（如果新名不存在且旧名存在）
+    if (
+        !migratedConfig.hasOwnProperty('builtinSkipCertVerify') &&
+        migratedConfig.hasOwnProperty('transformBackendScv')
+    ) {
+        migratedConfig.builtinSkipCertVerify = toBoolean(migratedConfig.transformBackendScv);
+    }
+    if (
+        !migratedConfig.hasOwnProperty('builtinEnableUdp') &&
+        migratedConfig.hasOwnProperty('transformBackendUdp')
+    ) {
+        migratedConfig.builtinEnableUdp = toBoolean(migratedConfig.transformBackendUdp);
+    }
+
+    if (migratedConfig.hasOwnProperty('builtinSkipCertVerify')) {
+        migratedConfig.builtinSkipCertVerify = toBoolean(migratedConfig.builtinSkipCertVerify);
+    }
+    if (migratedConfig.hasOwnProperty('builtinEnableUdp')) {
+        migratedConfig.builtinEnableUdp = toBoolean(migratedConfig.builtinEnableUdp);
+    }
+    if (migratedConfig.hasOwnProperty('builtinLoonSkipCertVerify')) {
+        migratedConfig.builtinLoonSkipCertVerify = toBoolean(
+            migratedConfig.builtinLoonSkipCertVerify
+        );
+    }
 
     return migratedConfig;
 }
-
 
 /**
  * 创建标准JSON响应
@@ -334,12 +578,30 @@ export function createJsonResponse(data, status = 200, headers = {}) {
         status,
         headers: {
             'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            ...headers
-        }
+            ...headers,
+        },
     });
+}
+
+/**
+ * 获取用于外部回调的基础 URL
+ * @param {Object} env - Cloudflare环境对象
+ * @param {URL} requestUrl - 当前请求 URL
+ * @returns {URL} - 规范化后的基础 URL
+ */
+export function getPublicBaseUrl(env, requestUrl) {
+    const configured = (env?.MISUB_CALLBACK_URL || env?.MISUB_PUBLIC_URL || '').trim();
+    if (!configured) {
+        return new URL(requestUrl.origin);
+    }
+
+    const hasProtocol = /^https?:\/\//i.test(configured);
+    const normalized = hasProtocol ? configured : `https://${configured}`;
+    const baseUrl = new URL(normalized);
+    baseUrl.pathname = '';
+    baseUrl.search = '';
+    baseUrl.hash = '';
+    return baseUrl;
 }
 
 /**
@@ -353,6 +615,54 @@ export class APIError extends Error {
         this.code = code;
         this.details = details;
     }
+}
+
+/**
+ * 转义HTML特殊字符，防止XSS和Telegram解析错误
+ * @param {string} str - 需要转义的字符串
+ * @returns {string} - 转义后的字符串
+ */
+export function escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+export const JSON_BODY_LIMITS = {
+    auth: 16 * 1024,
+    small: 128 * 1024,
+    normal: 1024 * 1024,
+    large: 5 * 1024 * 1024,
+};
+
+export class RequestBodyTooLargeError extends Error {
+    constructor(limitBytes) {
+        super(`Request JSON body too large (max ${limitBytes} bytes)`);
+        this.name = 'RequestBodyTooLargeError';
+        this.status = 413;
+        this.code = 'REQUEST_BODY_TOO_LARGE';
+    }
+}
+
+export async function readJsonWithLimit(request, limitBytes = JSON_BODY_LIMITS.normal) {
+    const contentLength =
+        request?.headers?.get?.('Content-Length') || request?.headers?.get?.('content-length');
+    if (contentLength) {
+        const declaredBytes = Number(contentLength);
+        if (Number.isFinite(declaredBytes) && declaredBytes > limitBytes) {
+            throw new RequestBodyTooLargeError(limitBytes);
+        }
+    }
+
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > limitBytes) {
+        throw new RequestBodyTooLargeError(limitBytes);
+    }
+    return text ? JSON.parse(text) : {};
 }
 
 /**
@@ -377,10 +687,62 @@ export function createErrorResponse(error, status = 500) {
         message = error;
     }
 
-    return createJsonResponse({
-        success: false,
-        error: message,
-        code,
-        details
-    }, status);
+    return createJsonResponse(
+        {
+            success: false,
+            error: message,
+            code,
+            details,
+        },
+        status
+    );
+}
+
+/**
+ * 迁移旧版 profile ID，去除 'profile_' 前缀
+ * 旧版 generateProfileId() 使用 generateId('profile') 生成带前缀的 ID，
+ * 当前版本已修复为不加前缀，但数据库中可能存留旧数据。
+ * @param {Array} profiles - 订阅组列表
+ * @returns {boolean} 是否发生了迁移
+ */
+export function migrateProfileIds(profiles) {
+    if (!Array.isArray(profiles)) return false;
+    let migrated = false;
+    for (const p of profiles) {
+        if (p.id && p.id.startsWith('profile_')) {
+            p.id = p.id.slice('profile_'.length);
+            migrated = true;
+        }
+    }
+    return migrated;
+}
+
+/**
+ * 安全的 UTF-8 到 Base64 编码 (替代已弃用的 unescape/encodeURIComponent 方案)
+ */
+export function base64EncodeUtf8(str) {
+    if (!str) return '';
+    try {
+        const bytes = new TextEncoder().encode(str);
+        const binString = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
+        return btoa(binString);
+    } catch (e) {
+        console.error('[Utils] base64EncodeUtf8 failed:', e);
+        return '';
+    }
+}
+
+/**
+ * 安全的 Base64 到 UTF-8 解码
+ */
+export function base64DecodeUtf8(base64) {
+    if (!base64) return '';
+    try {
+        const binString = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
+        const bytes = Uint8Array.from(binString, (m) => m.charCodeAt(0));
+        return new TextDecoder().decode(bytes);
+    } catch (e) {
+        console.error('[Utils] base64DecodeUtf8 failed:', e);
+        return '';
+    }
 }

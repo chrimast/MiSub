@@ -1,371 +1,205 @@
 # MiSub
 
+> 中文说明请见 [README-zh.md](README-zh.md)。
+
 <div align="center">
 
-**一个功能强大、界面精美的订阅管理与转换工具**
+**A lightweight subscription management panel for organizing proxy nodes, generating client-ready subscriptions, and composing node-processing workflows.**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-orange.svg)](https://pages.cloudflare.com/)
 [![Vue 3](https://img.shields.io/badge/Vue-3.x-green.svg)](https://vuejs.org/)
+[![Version](https://img.shields.io/badge/version-v2.7.0-indigo.svg)](#version)
 
-[功能特性](#-功能特性) • [快速开始](#-快速开始) • [部署指南](#-部署指南) • [使用说明](#-使用说明) • [更新日志](#-更新日志)
+[Features](#features) • [Quick Start](#quick-start) • [Deployment](#deployment) • [Usage](#usage) • [Documentation](#documentation)
 
 </div>
 
 ---
 
-## 📸 应用截图
+## Overview
+
+MiSub helps you manage upstream subscriptions and manual nodes, combine them into profiles, process nodes through a visual operator chain, and publish subscription links for common proxy clients.
+
+It is designed for personal and small-team usage: simple operations, clear client links, safe defaults, and flexible Cloudflare Pages deployment.
+
+## Screenshots
 
 <div align="center">
 
-| 登录界面 | 管理界面 |
-|---------|---------|
-| ![登录界面](images/1.png) | ![管理界面](images/2.png) |
+| Login | Dashboard |
+|------|-----------|
+| ![Login screen](images/1.png) | ![Dashboard](images/2.png) |
 
 </div>
 
----
+## Features
 
-## ✨ 功能特性
+- **Profiles**: combine upstream subscriptions and manual nodes into scenario-specific subscription profiles.
+- **Subscription and node management**: manage airport subscriptions, manual nodes, groups, ordering, remarks, traffic, and expiry data.
+- **Operator Chain**: process nodes with filter, regex rename, script/DSL execution, sorting, and smart deduplication steps.
+- **Multi-client output**: generate subscription output for Clash/Mihomo, Sing-Box, Surge, Loon, Quantumult X, Shadowrocket, V2rayN/V2rayNG, and base64 clients.
+- **Built-in templates**: use unified template output, rule-set presets, region groups, policy groups, and custom rule templates.
+- **Custom public page**: publish a public explore page or an immersive disguise/custom page with sanitized HTML rendering.
+- **Storage options**: use Cloudflare KV for simple deployments or Cloudflare D1 for higher write volume and structured storage.
+- **Notifications and operations**: support Telegram notifications, scheduled refresh, backup/restore, logs, and diagnostics.
+- **Modern UI**: responsive Vue 3 interface with light/dark modes and English/Chinese localization.
 
-### 🎯 核心功能
+## Supported Protocols
 
-- **🗂️ 订阅分组 (Profiles)**
-  - 自由组合机场订阅和手动节点
-  - 为不同场景生成专属订阅链接
-  - 支持全选/全不选,操作便捷
-  - 自定义分组名称和订阅链接
-
-- **📦 订阅与节点分离管理**
-  - 机场订阅和手动节点独立管理
-  - 批量导入自动分类
-  - 支持拖拽排序
-  - 一键按地区自动排序
-
-- **🎨 精致的 UI/UX**
-  - 明亮/暗黑模式自动切换
-  - 磨砂玻璃质感现代化设计
-  - 完善的交互提示和加载状态
-  - 完善的交互提示和加载状态
-  - 响应式布局,支持移动端
-
-- **🌍 公开主页 (Explore)**
-  - 访客模式：无需登录即可预览公开分享的订阅
-  - 管理员分享：精选中转/直连机场订阅
-  - 一键复制：访客可直接复制订阅链接
-  - 客户端推荐：主流全平台客户端下载指引
-
-### 🆕 最新功能
-
-- **📝 订阅备注**
-  - 为每个订阅添加备注信息
-  - 记录官网、价格、到期时间等
-  - 在订阅卡片上清晰显示
-
-- **🌐 自定义 User-Agent**
-  - 为每个订阅设置独立的 UA
-  - 10+ 常用客户端 UA 预设
-  - 解决机场 UA 限制问题
-
-- **🔧 Snell 协议完整支持**
-  - 支持 Snell v1-v5
-  - 完整的参数支持 (reuse/tfo)
-  - Surge 配置导入支持
-
-- **📊 流量与到期时间显示**
-  - 订阅卡片显示已用/总流量
-  - 到期时间提醒,颜色高亮
-  - 自动更新节点数和流量信息
-
-### 💾 双重存储支持
-
-- **Cloudflare KV 存储**
-  - 极快的查询速度
-  - 适合轻度使用
-  - 简单易配置
-
-- **Cloudflare D1 数据库**
-  - 无写入频率限制
-  - 适合频繁更新
-  - 一键数据迁移
-
-### 🔐 安全与定制
-
-- **密码保护**: 管理界面由自定义密码保护
-- **高度可定制**: 自定义输出文件名、Subconverter 地址等
-- **数据备份**: 支持导出/导入备份
-- **TG 推送**: 支持 Telegram 通知
-
-### 🌍 多格式支持
-
-支持主流代理客户端和格式:
-
-| 客户端 | 格式支持 | 自动识别 |
-|--------|---------|---------|
-| Clash / Clash Meta | ✅ | ✅ |
-| Sing-Box | ✅ | ✅ |
-| Surge | ✅ | ✅ |
-| Shadowrocket | ✅ | ✅ |
-| V2rayN / V2rayNG | ✅ | ✅ |
-| Quantumult X | ✅ | ✅ |
-| Loon | ✅ | ✅ |
-
-### 📡 支持的协议
-
-- Shadowsocks (SS/SS2022) - 包含自动修复功能
-- ShadowsocksR (SSR)
+- Shadowsocks / SS2022
 - VMess
 - VLESS
 - Trojan
-- Hysteria / Hysteria2
+- Hysteria2 / HY2
 - TUIC
-- **Snell** - 完整支持 v1-v5
-- NaiveProxy
-- SOCKS5 / HTTP
+- Snell
+- WireGuard
+- AnyTLS
+- HTTPS
+- SOCKS5 / SOCKS5-TLS
 
----
+## Supported Output Formats
 
-## 🚀 快速开始
+- `clash` / Mihomo YAML
+- `surge`
+- `loon`
+- `quanx`
+- `singbox`
+- `base64`
+- external converter backend mode
 
-### 前置要求
+## Quick Start
 
-- Cloudflare 账号
-- GitHub 账号
+### Prerequisites
 
-### 一键部署
+- A GitHub account
+- A Cloudflare account
+- Node.js 20+ for local development
 
-1. **Fork 本仓库**到你的 GitHub 账号
-2. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
-3. 进入 `Workers & Pages` → `创建应用程序` → `Pages` → `连接到 Git`
-4. 选择你 Fork 的仓库
-5. 配置构建设置:
-   - **框架预设**: `Vue`
-   - **构建命令**: `npm run build`
-   - **构建输出目录**: `dist`
-6. 点击 `保存并部署`
+### Deploy to Cloudflare Pages
 
----
+1. Fork this repository.
+2. Open Cloudflare Dashboard.
+3. Go to `Workers & Pages` → `Create application` → `Pages` → `Connect to Git`.
+4. Select your forked repository.
+5. Configure build settings:
+   - Framework preset: `Vue`
+   - Build command: `npm run build`
+   - Build output directory: `dist`
+6. Deploy the project.
+7. Bind storage before production use.
 
-## 📚 部署指南
+## Deployment
 
-### 1. 绑定 KV 命名空间 (必需)
+### Required KV binding
 
-部署完成后,进入项目设置:
+Create or select a Cloudflare KV namespace, then bind it in Pages settings:
 
-1. `设置` → `函数` → `KV 命名空间绑定`
-2. 点击 `添加绑定`
-3. **变量名称**: `MISUB_KV`
-4. **KV 命名空间**: 选择或创建一个 KV 命名空间
+- Variable name: `MISUB_KV`
+- Binding type: KV namespace
 
-### 2. 绑定 D1 数据库 (可选,推荐)
+### Optional D1 binding
 
-**创建 D1 数据库:**
+D1 is recommended when you refresh subscriptions frequently or want structured storage.
+
 ```bash
 wrangler d1 create misub
-```
-
-**绑定数据库:**
-1. `设置` → `函数` → `D1 数据库绑定`
-2. 点击 `添加绑定`
-3. **变量名称**: `MISUB_DB`
-4. **D1 数据库**: 选择刚创建的数据库
-
-**初始化表结构:**
-```bash
 wrangler d1 execute misub --file=schema.sql --remote
 ```
 
-> 💡 若无法初始化,可在 Cloudflare 控制台手动执行 `schema.sql`
+Bind the database in Pages settings:
 
-### 3. 设置环境变量
+- Variable name: `MISUB_DB`
+- Binding type: D1 database
 
-在 `设置` → `环境变量` 中添加 **生产环境** 变量：
+If schema initialization fails in the CLI, run the latest `schema.sql` manually in the Cloudflare D1 console.
 
-**必填：**
+### Recommended environment variables
 
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `ADMIN_PASSWORD` | 管理员登录密码 | `your_secure_password` |
-| `COOKIE_SECRET` | Cookie 加密密钥 | `64位随机字符串` |
+- `ADMIN_PASSWORD`: admin login password. If unset, the default password is `admin`.
+- `COOKIE_SECRET`: stable session signing secret.
+- `CORS_ORIGINS`: allowed browser origins for API requests.
+- `CRON_SECRET`: secret used by external cron triggers.
+- `MISUB_PUBLIC_URL`: public site URL used to generate subscription conversion callback URLs.
+- `MISUB_CALLBACK_URL`: callback base URL for subscription conversion. It takes precedence over `MISUB_PUBLIC_URL`.
 
-**可选（按需设置）：**
+Never commit real tokens, cookies, UUID/private keys, webhook secrets, bot tokens, subscription URLs, or airport domains.
 
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `CORS_ORIGINS` | 允许跨域访问的来源(逗号分隔)，同域可不填 | `https://example.com,http://localhost:5173` |
+## Local Development
 
-**前端构建变量（可选）：**
+```bash
+npm install
+npm run dev
+```
 
-| 变量名 | 说明 | 示例 |
-|--------|------|------|
-| `VITE_ERROR_REPORT_URL` | 前端错误上报地址，不需要上报可不填 | `/api/system/error_report` |
+For local Pages Functions testing:
 
-### 4. 重新部署
+```bash
+npm run dev:server -- --ip 0.0.0.0 --kv MISUB_KV --persist-to .wrangler/state-local
+```
 
-完成配置后,在 `部署` 选项卡重新部署项目。
+Useful commands:
 
----
+```bash
+npm test -- --run
+npm run build
+npm run preview
+```
 
-## 💡 使用说明
+## Usage
 
-### 登录管理界面
+1. Log in to the admin panel.
+2. Add upstream subscriptions or manual nodes.
+3. Create profiles that combine selected sources and manual-node groups.
+4. Configure the operator chain if you need filtering, renaming, sorting, or deduplication.
+5. Copy the generated client link or QR code.
+6. Import the link into your preferred proxy client.
 
-### 登录管理界面
+## Operator Chain
 
-1. 访问您的 Cloudflare Pages 域名（进入公开主页）。
-2. 点击右上角的 **"登录"** 按钮。
-3. 输入设置的 `ADMIN_PASSWORD` 即可进入管理后台。
+Profiles can inherit a global default operator chain or define their own processing flow. Available operators include:
 
-### 添加订阅
+- Filter nodes by protocol, region, include regex, or exclude regex.
+- Rename nodes with regex replacement or templates.
+- Apply restricted script/DSL operations.
+- Sort nodes by weighted conditions and custom region priority.
+- Deduplicate nodes with protocol-aware smart rules.
 
-1. 点击 `新增订阅`
-2. 填写订阅名称和链接
-3. (可选) 设置自定义 UA
-4. (可选) 添加备注信息
-5. (可选) 设置过滤规则
-6. 保存订阅
+See [Operator Chain Guide](docs/OPERATOR_CHAIN_GUIDE.md) for details.
 
-### 创建订阅组
+## Security Notes
 
-1. 在右侧面板点击 `新增订阅组`
-2. 选择要包含的订阅和节点
-3. 设置分组名称
-4. 保存并获取订阅链接
+- Admin APIs are password/session protected.
+- Custom public HTML is sanitized before rendering.
+- User-provided scripts are not executed in the main page context.
+- External resource loading and iframe URLs are restricted by renderer policy.
+- Subscription fetch and preview flows include SSRF-oriented safeguards.
+- Use strong secrets for `ADMIN_PASSWORD`, `COOKIE_SECRET`, and `CRON_SECRET`.
 
-### 数据迁移 (KV → D1)
+## Documentation
 
-如果已在使用 KV 存储,想迁移到 D1:
+- [Chinese README](README-zh.md)
+- [External API Usage Guide](docs/external-management-api-usage.md)
+- [External API Reference](docs/external-management-api.md)
+- [External API OpenAPI Spec](docs/external-management-api.openapi.yaml)
+- [Operator Chain Guide](docs/OPERATOR_CHAIN_GUIDE.md)
+- [v2.5.0 Upgrade Guide](docs/UPGRADE_V2.5.md)
+- [Architecture](docs/architecture.md)
+- [Data Model](docs/data-model.md)
 
-1. 配置 D1 数据库 (参考部署指南)
-2. 登录管理界面,进入 `设置`
-3. 点击 `迁移数据到 D1 数据库`
-4. 确认迁移,等待完成
+## Version
 
----
+Current version: `v2.7.0`
 
-## 📊 存储类型对比
+For detailed historical changes, see [README-zh.md](README-zh.md) and the repository commit history.
 
-| 特性 | KV 存储 | D1 数据库 |
-|------|---------|-----------|
-| **写入限制** | 1000次/天 | 无限制 |
-| **查询速度** | 极快 | 快 |
-| **适用场景** | 读多写少 | 频繁更新 |
-| **配置复杂度** | 简单 | 中等 |
-| **推荐使用** | 轻度使用 | 重度使用 |
+## Acknowledgements
 
-**选择建议:**
-- 🔰 **新用户**: 建议直接配置 D1,避免写入限制
-- 📈 **现有用户**: 遇到限制可使用迁移工具
-- ⚡ **轻度使用**: KV 完全够用,速度更快
-- 🚀 **重度使用**: D1 是最佳选择
+Thanks to sponsor [ForZTN](https://sponsorship.forztn.com/github/imzyb/MiSub) for supporting the project server.
 
----
+MiSub is developed from [CF-Workers-SUB](https://github.com/cmliu/CF-Workers-SUB). Thanks to CM for the open-source contribution.
 
-## 🛠️ 技术栈
+## License
 
-- **前端**: Vue 3 + Vite + Tailwind CSS
-- **后端**: Cloudflare Pages Functions
-- **存储**: Cloudflare KV + D1 数据库
-- **部署**: Cloudflare Pages
-
----
-
-## 📝 更新日志
-
-### v2.3.0 (2026-01-03)
-
-**✨ 重要更新:**
-- **订阅与节点管理重构** - 订阅编辑、配置文件、节点管理与设置模块全面重构，新增节点筛选、规则编辑与统计卡片
-- **订阅管理能力增强** - 新增订阅管理模块，支持多协议转换，强化手动节点管理
-- **统一 ID 与数据流** - 引入统一 ID 生成工具，订阅/配置/节点数据整合到 `useDataStore`，移除旧备份与过时认证模块
-
-**🛠️ 接口与安全:**
-- **统一 API 响应** - 统一错误处理与响应格式，新增订阅解析模块
-- **安全与请求** - 引入 DOMPurify 清理 SVG，API 调用迁移到 `lib/http.js`，优化 CORS 并新增错误上报
-
-**🔧 工具与开发体验:**
-- **日志与工具函数** - 优化日志级别与调试输出，统一 timing 常量，`formatBytes` 迁移到共享工具，更新地理工具函数
-- **路由与构建** - 新增 Vite 代理规则，移除 `PublicProfilesView` 路由，首页增加 `/explore` 别名
-- **测试覆盖** - 新增节点缓存服务单元测试
-
-### v2.2.0 (2026-01-02)
-
-**✨ 核心功能更新:**
-- **可视化节点筛选** - 全新的节点规则编辑器，支持标签化管理包含/排除关键词，内置常用地区与协议标签，配置更轻松
-- **自定义公开页 Hero** - 支持在后台自定义公共主页的标题与标语，打造个性化门户
-- **留言板增强** - 新增数学验证码 (Captcha) 防护机制，优化提交成功反馈体验
-- **交互体验优化** - 留言板禁用时提供友好的 Toast 提示，优化移动端入口逻辑
-
-**🎨 界面重构:**
-- **设置页全新设计** - 基础设置与服务集成页面采用现代化卡片式布局，功能分区更清晰
-- **视觉优化** - 统一了图标风格与色彩系统，优化深色模式体验
-- **二维码组件** - 修复二维码遮罩层级与交互问题
-
-**⚡️ 其他改进:**
-- **客户端识别升级** - 增强对 Surge、Stash 等客户端的 User-Agent 识别准确度
-- **API 修正** - 修复公开配置接口字段缺失问题，增强后端数据安全性
-
-### v2.1.0 (2025-12-30)
-
-**新增功能:**
-- ✨ **公开主页 (Explore)** - 访客可无需登录浏览精选订阅
-- ✨ **访客模式** - 支持公共资源分享与客户端下载指引
-- ✨ **新版登录流程** - 统一入口，更加安全便捷
-- 🎨 **布局优化** - 适配公开页与仪表盘的无缝切换
-
-**改进优化:**
-- 🎨 优化订阅卡片显示
-- 🐛 修复 SS2022 节点错误
-- 📚 完善文档和使用说明
-
-### v2.0.0 (2025-12-22)
-
-**新增功能:**
-- ✨ 订阅备注功能 - 记录官网、价格等信息
-- ✨ 自定义 User-Agent - 解决机场 UA 限制
-- ✨ Snell 协议完整支持 - 包含 reuse/tfo 参数
-- ✨ Snell 协议完整支持 - 包含 reuse/tfo 参数
-- ✨ Surge 配置解析增强 - 支持更多参数
-
-### v1.5.0
-
-**新增功能:**
-- ✨ D1 数据库支持 - 解决 KV 写入限制
-- ✨ 一键数据迁移工具
-- ✨ 存储类型选择
-
-### v1.0.0
-
-**核心功能:**
-- 🎯 订阅分组 (Profiles)
-- 📦 订阅与节点分离管理
-- 🎨 全新 UI 设计
-- 🔐 密码保护
-
----
-
-## 🙏 致谢
-
-本项目基于 [CF-Workers-SUB](https://github.com/cmliu/CF-Workers-SUB) 项目发展而来,感谢 CM 大佬的开源贡献。
-
----
-
-## 📄 License
-
-[MIT](LICENSE)
-
----
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request!
-
----
-
-<div align="center">
-
-**如果这个项目对你有帮助,请给个 ⭐ Star 支持一下!**
-
-Made with ❤️ by AI
-
-</div>
+MIT License. See [LICENSE](LICENSE).

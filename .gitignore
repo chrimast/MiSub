@@ -1,5 +1,8 @@
 CLAUDE.md
 wrangler.toml
+template.yaml
+edgeone.json
+
 
 progame/
 # Logs
@@ -82,6 +85,8 @@ temp/
 .claude/
 
 DOCKER_GUIDE.md
+AGENTS.md
+misub-agent.md
 
 # Local development and testing
 local-server.js
@@ -90,3 +95,11 @@ test-chrome-mcp.js
 test-new-protocols.js
 test-screenshots/
 .wrangler/
+.ace-tool/
+.agent/
+.shared/
+# Docker (Closed Source)
+docker/
+data/
+/brain/
+/scratch/
