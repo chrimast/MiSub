@@ -79,13 +79,6 @@ export async function handleDisguiseRequest(context, preloadedSettings = null) {
         return null; // Allow access
     }
 
-    // Default login path `/login` is the site entry. Do not disguise `/`,
-    // otherwise visitors opening the domain see a 404 instead of the login page.
-    // Custom login paths still hide `/` so the admin entrance stays concealed.
-    if (!hasCustomLoginPath && url.pathname === '/') {
-        return null;
-    }
-
     // List of protected SPA routes that should be hidden/disguised
     // Note: We don't need to list EVERY route, just the ones that exist.
     // Anything else falls through to 404 (or index.html -> 404), which is also disguised if it matches typical SPA behavior?

@@ -24,20 +24,11 @@
 
     const isExploreRoute = computed(() => route.path === '/explore');
 
-    // 已登录访问首页 → 仪表盘；未登录且公开页关闭 → 登录页（不要停在伪装 404）
+    // 如果用户已登录且访问的是首页 /，自动通过逻辑重定向到仪表盘 /dashboard
     watchEffect(() => {
         if (sessionState.value === 'loggedIn' && !isExploreRoute.value) {
             // 导航被中断/失败时不应冒泡为未处理的 Promise 拒绝（会触发全局错误提示）
             router.replace('/dashboard').catch(() => {});
-            return;
-        }
-        if (
-            sessionState.value === 'loggedOut' &&
-            !isExploreRoute.value &&
-            publicConfig.value &&
-            !publicConfig.value.enablePublicPage
-        ) {
-            router.replace('/login').catch(() => {});
         }
     });
 
@@ -56,14 +47,13 @@
             return RedirectPlaceholder;
         }
 
-        // 未登录 + 公开页关闭：首页进入登录页，/explore 仍显示 404
+        // 未登录 + 公开页关闭：显示 404 (Disguise)
         if (
             sessionState.value === 'loggedOut' &&
             publicConfig.value &&
             !publicConfig.value.enablePublicPage
         ) {
-            if (isExploreRoute.value) return NotFoundView;
-            return RedirectPlaceholder;
+            return NotFoundView;
         }
 
         // 其他情况（未登录 + 公开页开启）：显示公开页

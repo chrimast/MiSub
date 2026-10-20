@@ -322,16 +322,6 @@ export async function onRequest(context) {
                     }
                 }
 
-                // 默认登录入口：公开页关闭时，打开域名应进入登录页，而不是停在伪装 404。
-                if (
-                    url.pathname === '/' &&
-                    !isStaticAsset &&
-                    !config.enablePublicPage &&
-                    customLoginPath === defaultLoginPath
-                ) {
-                    return Response.redirect(new URL('/login', request.url), 302);
-                }
-
                 if (!isStaticAsset && !isSpaRoute && url.pathname !== '/') {
                     // 如果是浏览器请求且看起来像是一个页面访问，优先尝试返回 SPA
                     // fix: 解决经典模式下可能的路由冲突
